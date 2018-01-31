@@ -19,8 +19,6 @@ CURRENT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-
-
 _p = None
 
 
@@ -63,10 +61,11 @@ class DBus(object):
         VariableTypes.Boolean: "c",
     }
 
-    def __init__(self, name, variables, type=None):
+    def __init__(self, name, variables={}, type=None, should_assert=True):
 
         self._name = name
         self._variables = []
+        self._assertion = should_assert
 
         self._is_connected = False
 
@@ -92,7 +91,7 @@ class DBus(object):
         self._socket.connect((TCP_IP, TCP_PORT))
         logger.info("Connecting ...")
 
-        data = self._recv(ft, assertion=True)  # connection status
+        data = self._recv(ft, assertion=self._assertion, decode=False)  # connection status
 
         self._is_connected = True
         logger.info("Successfully connected to DBus")
@@ -103,9 +102,8 @@ class DBus(object):
         ft = FunctionTypes.REGISTERCOMPONENT.value
         data = self._type + self._name.encode()
         self._send(ft, data)
-        data = self._recv(ft, assertion=True)
+        data = self._recv(ft, assertion=self._assertion, decode=False)
         logger.info("Successfully registered to DBus")
-
         return data
 
     def _register_component_variables(self):
@@ -118,23 +116,8 @@ class DBus(object):
         data = l + data.encode() + bytes([v.type.value for v in self._variables])
         self._send(ft, data)
 
-        data = self._recv(ft, assertion=True)
+        data = self._recv(ft, assertion=self._assertion, decode=False)
         logger.info("Successfully registered component variables to DBus")
-
-        component_information = self._request_component_information()
-
-        component = {"name": "", "variables": {"names": [], "types": []}}
-        for c in component_information:
-            if c["name"] == self._name:
-                component = c
-
-        assert component["name"] == self._name, "Error occurred in retrieving variable names from DBus: {}".format(component)
-
-        ordered_variables_names = component["variables"]["names"]
-        ordered_variables_types = component["variables"]["types"]
-
-        self._variables = [Variable(name, type) for name, type in zip(ordered_variables_names, ordered_variables_types)]
-
         return data
 
     def _request_component_information(self):
@@ -211,7 +194,7 @@ class DBus(object):
 
         self._send(ft, data)
 
-        data = self._recv(ft, assertion=True)
+        data = self._recv(ft, assertion=self._assertion)
         return data
 
     def _request_component_variable_content(self, names, variables):
@@ -246,7 +229,7 @@ class DBus(object):
 
         self._send(ft, b)
 
-        data = self._recv(ft, assertion=True)
+        data = self._recv(ft, assertion=self._assertion)
         return data
 
     def _get_flags(self):
@@ -267,7 +250,7 @@ class DBus(object):
 
         data = self._length_in_bytes(*flags)
         self._send(ft, data)
-        self._recv(ft, assertion=True)
+        self._recv(ft, assertion=self._assertion)
 
     def _get_local_flags(self):
         ft = FunctionTypes.GETLOCALFLAG.value
@@ -284,7 +267,7 @@ class DBus(object):
 
         self._send(ft)
 
-        data = self._recv(ft, assertion=True)
+        data = self._recv(ft, assertion=self._assertion)
         return data
 
     def _get_error(self):
@@ -302,13 +285,13 @@ class DBus(object):
 
         self._send(ft)
 
-        data = self._recv(ft, assertion=True)
+        data = self._recv(ft, assertion=self._assertion)
         return data
 
     def _clear(self):
         ft = FunctionTypes.CLEAR.value
         self._send(ft)
-        self._recv(ft, assertion=True)
+        self._recv(ft, assertion=self._assertion)
 
     def _get_names(self):
         ft = FunctionTypes.GETNAMES.value
@@ -323,10 +306,13 @@ class DBus(object):
         logger.info("Disconnecting %s", self._name)
         self._is_connected = False
 
-    def _recv(self, ft, assertion=False):
+    def _recv(self, ft, assertion=False, decode=True):
         data = self._socket.recv(BUFFER_SIZE)
         logger.debug("Received data %s from %s action", data, FunctionTypes(ft).name)
-        data = self._decode(data, ft)
+        if decode is True:
+            data = self._decode(data, ft)
+        else:
+            assertion = False
         if assertion is True:
             assert data == Status.SUCCESS.value, "Something went wrong with action {rft}".format(rft=FunctionTypes(ft).name)
         logger.debug("Message Content = %s", data)
@@ -357,14 +343,14 @@ class DBus(object):
     def _decode(cls, data, ft):
         data = [i for i in data]
         size = cls._sizeof(*data[0:4])  # TODO: Fix return size calculation and use for assertion
-        logger.debug("Size of data is interpreted as %s", size)
-
+        logger.debug("Size of data %s is interpreted as %s", data, size)
+        logger.info("data = %s, type = %s, len = %s", data, type(data), len(data))
         assert data[4] == ft, "Unrecognized return type for action {rft}, got {ft}".format(rft=FunctionTypes(ft).name, ft=data[4])
 
         return bytes(data[5:])
 
     @staticmethod
-    def _sizeof(b4, b3, b2, b1):
+    def _sizeof(b4, b3=0, b2=0, b1=0):
         return b1 + 0xff * b2 + 0xff * 0xff * b3 + 0xff * 0xff * 0xff * b4
 
     @staticmethod
