@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Messages codes
 """
@@ -37,6 +38,8 @@ class FunctionTypes(Enum):
 class ComponentTypes(Enum):
     """VariableTypes Enum"""
     SLAVE = 0x01
+    MASTER = 0x0F
+    SUPERVISOR = 0xAF
 
 
 class VariableTypes(Enum):
