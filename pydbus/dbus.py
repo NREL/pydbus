@@ -147,7 +147,7 @@ class DBus(object):
             component_variables[component]["size"] = b2 * 0xff + b1
             data = data[2:]
 
-            total_size = total_size = size
+            total_size = total_size + size
 
         variable_names = data.split(b",", total_size)[:-1]
 
